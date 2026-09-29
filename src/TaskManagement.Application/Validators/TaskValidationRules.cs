@@ -10,8 +10,7 @@ namespace TaskManagement.Application.Validators;
 internal static class TaskValidationRules
 {
     public static string AllowedStatusesMessage { get; } =
-        "Status must be one of: " +
-        string.Join(", ", TaskItemStatusExtensions.AllowedDisplayNames.Select(s => $"'{s}'")) + ".";
+        "Status must be one of: " + string.Join(", ", Enum.GetNames<TaskItemStatus>()) + ".";
 
     public static IRuleBuilderOptions<T, string?> ValidTitle<T>(this IRuleBuilder<T, string?> rule) =>
         rule
@@ -24,14 +23,12 @@ internal static class TaskValidationRules
             .Must(description => description is null || description.Trim().Length <= TaskItem.DescriptionMaxLength)
             .WithMessage($"Description must have at most {TaskItem.DescriptionMaxLength} characters.");
 
-    public static IRuleBuilderOptions<T, string?> RequiredStatus<T>(this IRuleBuilder<T, string?> rule) =>
+    public static IRuleBuilderOptions<T, TaskItemStatus?> RequiredStatus<T>(this IRuleBuilder<T, TaskItemStatus?> rule) =>
         rule
-            .Must(status => !string.IsNullOrWhiteSpace(status)).WithMessage("Status is required.")
-            .Must(status => string.IsNullOrWhiteSpace(status) || TaskItemStatusExtensions.TryParse(status, out _))
-            .WithMessage(AllowedStatusesMessage);
+            .NotNull().WithMessage("Status is required.")
+            .IsInEnum().WithMessage(AllowedStatusesMessage);
 
-    public static IRuleBuilderOptions<T, string?> OptionalStatus<T>(this IRuleBuilder<T, string?> rule) =>
-        rule
-            .Must(status => status is null || TaskItemStatusExtensions.TryParse(status, out _))
-            .WithMessage(AllowedStatusesMessage);
+    // Numeric JSON values outside the enum (e.g. 99) deserialize fine, so they are rejected here.
+    public static IRuleBuilderOptions<T, TaskItemStatus?> OptionalStatus<T>(this IRuleBuilder<T, TaskItemStatus?> rule) =>
+        rule.IsInEnum().WithMessage(AllowedStatusesMessage);
 }

@@ -41,6 +41,13 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 Detail = notFound.Message
             },
 
+            ConcurrencyConflictException conflict => new ProblemDetails
+            {
+                Status = StatusCodes.Status412PreconditionFailed,
+                Title = "Precondition Failed",
+                Detail = conflict.Message
+            },
+
             DomainException domainException => new ProblemDetails
             {
                 Status = StatusCodes.Status400BadRequest,

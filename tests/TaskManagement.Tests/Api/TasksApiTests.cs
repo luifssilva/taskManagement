@@ -2,8 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc.Testing;
 using TaskManagement.Application.DTOs;
+using TaskManagement.Domain.Enums;
 
 namespace TaskManagement.Tests.Api;
 
@@ -13,6 +15,11 @@ namespace TaskManagement.Tests.Api;
 /// </summary>
 public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
 {
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     private readonly HttpClient _client;
 
     public TasksApiTests(WebApplicationFactory<Program> factory)
@@ -23,18 +30,65 @@ public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task Post_WithValidData_Returns201WithLocation()
     {
-        var response = await _client.PostAsJsonAsync("/api/tasks", NewTask());
+        var response = await _client.PostAsJsonAsync("/api/tasks", NewTask(), Json);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var created = await response.Content.ReadFromJsonAsync<TaskResponse>();
+        var created = await response.Content.ReadFromJsonAsync<TaskResponse>(Json);
         Assert.NotNull(created);
         Assert.Equal($"/api/tasks/{created.Id}", response.Headers.Location?.AbsolutePath);
+    }
+
+    [Theory]
+    [InlineData("\"EmProgresso\"", TaskItemStatus.EmProgresso)]
+    [InlineData("\"emprogresso\"", TaskItemStatus.EmProgresso)]
+    [InlineData("3", TaskItemStatus.Concluida)]
+    public async Task Post_AcceptsStatusByNameOrNumber(string statusJson, TaskItemStatus expected)
+    {
+        var response = await PostJsonAsync($$"""{ "title": "Agendar coleta", "status": {{statusJson}} }""");
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Contains($"\"status\":\"{expected}\"", await response.Content.ReadAsStringAsync());
+    }
+
+    [Theory]
+    [InlineData("\"Cancelada\"")]
+    [InlineData("\"Em progresso\"")]
+    [InlineData("99")]
+    public async Task Post_WithUnknownStatus_Returns400OnStatusField(string statusJson)
+    {
+        var response = await PostJsonAsync($$"""{ "title": "Agendar coleta", "status": {{statusJson}} }""");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("status", out _));
+    }
+
+    [Fact]
+    public async Task List_WithUnknownStatus_Returns400()
+    {
+        var response = await _client.GetAsync("/api/tasks?status=Cancelada");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task TaskStatuses_ReturnsDomainTable()
+    {
+        var statuses = await _client.GetFromJsonAsync<List<TaskStatusResponse>>("/api/task-statuses", Json);
+
+        Assert.Equal(
+            [
+                (1, TaskItemStatus.Pendente, "Pendente"),
+                (2, TaskItemStatus.EmProgresso, "Em progresso"),
+                (3, TaskItemStatus.Concluida, "Concluída")
+            ],
+            statuses!.Select(s => (s.Id, s.Name, s.Description)));
     }
 
     [Fact]
     public async Task Post_WithInvalidData_Returns400ProblemDetails()
     {
-        var response = await _client.PostAsJsonAsync("/api/tasks", NewTask() with { Title = "", Status = "X" });
+        var response = await _client.PostAsJsonAsync("/api/tasks", NewTask() with { Title = "", Status = null }, Json);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -52,9 +106,7 @@ public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
     {
         var json = """{ "title": "Tarefa", "status": "Pendente", "dueDate": "31/12/2026" }""";
 
-        var response = await _client.PostAsync(
-            "/api/tasks",
-            new StringContent(json, Encoding.UTF8, "application/json"));
+        var response = await PostJsonAsync(json);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -67,7 +119,7 @@ public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
         var response = await _client.GetAsync($"/api/tasks/{created.Id}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(created, await response.Content.ReadFromJsonAsync<TaskResponse>());
+        Assert.Equal(created, await response.Content.ReadFromJsonAsync<TaskResponse>(Json));
     }
 
     [Fact]
@@ -84,11 +136,11 @@ public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task List_WithFilters_ReturnsOnlyMatchingTasks()
     {
         var dueDate = new DateOnly(2031, 1, 15);
-        var match = await CreateAsync(NewTask() with { DueDate = dueDate, Status = "Em progresso" });
-        await CreateAsync(NewTask() with { DueDate = dueDate, Status = "Pendente" });
+        var match = await CreateAsync(NewTask() with { DueDate = dueDate, Status = TaskItemStatus.EmProgresso });
+        await CreateAsync(NewTask() with { DueDate = dueDate, Status = TaskItemStatus.Pendente });
 
         var tasks = await _client.GetFromJsonAsync<List<TaskResponse>>(
-            "/api/tasks?status=Em%20progresso&dueDate=2031-01-15");
+            "/api/tasks?status=EmProgresso&dueDate=2031-01-15", Json);
 
         var task = Assert.Single(tasks!);
         Assert.Equal(match.Id, task.Id);
@@ -108,7 +160,7 @@ public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
         var unique = $"termo-{Guid.NewGuid():N}";
         var created = await CreateAsync(NewTask() with { Description = $"Descrição com {unique}" });
 
-        var tasks = await _client.GetFromJsonAsync<List<TaskResponse>>($"/api/tasks/search?term={unique}");
+        var tasks = await _client.GetFromJsonAsync<List<TaskResponse>>($"/api/tasks/search?term={unique}", Json);
 
         Assert.Equal(created.Id, Assert.Single(tasks!).Id);
     }
@@ -125,22 +177,22 @@ public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task Put_ExistingTask_Returns200WithUpdatedData()
     {
         var created = await CreateAsync();
-        var update = new UpdateTaskRequest { Title = "Atualizada", Status = "Concluída" };
+        var update = new UpdateTaskRequest { Title = "Atualizada", Status = TaskItemStatus.Concluida };
 
-        var response = await _client.PutAsJsonAsync($"/api/tasks/{created.Id}", update);
+        var response = await _client.PutAsJsonAsync($"/api/tasks/{created.Id}", update, Json);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var updated = await response.Content.ReadFromJsonAsync<TaskResponse>();
+        var updated = await response.Content.ReadFromJsonAsync<TaskResponse>(Json);
         Assert.Equal("Atualizada", updated!.Title);
-        Assert.Equal("Concluída", updated.Status);
+        Assert.Equal(TaskItemStatus.Concluida, updated.Status);
     }
 
     [Fact]
     public async Task Put_MissingTask_Returns404()
     {
-        var update = new UpdateTaskRequest { Title = "Atualizada", Status = "Concluída" };
+        var update = new UpdateTaskRequest { Title = "Atualizada", Status = TaskItemStatus.Concluida };
 
-        var response = await _client.PutAsJsonAsync($"/api/tasks/{Guid.NewGuid()}", update);
+        var response = await _client.PutAsJsonAsync($"/api/tasks/{Guid.NewGuid()}", update, Json);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -150,7 +202,7 @@ public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
     {
         var created = await CreateAsync();
 
-        var response = await _client.PutAsJsonAsync($"/api/tasks/{created.Id}", new UpdateTaskRequest());
+        var response = await _client.PutAsJsonAsync($"/api/tasks/{created.Id}", new UpdateTaskRequest(), Json);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -183,18 +235,122 @@ public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Get_ReturnsETagWithVersion()
+    {
+        var created = await CreateAsync();
+
+        var response = await _client.GetAsync($"/api/tasks/{created.Id}");
+
+        Assert.Equal("\"1\"", response.Headers.ETag?.Tag);
+    }
+
+    [Fact]
+    public async Task Put_WithCurrentIfMatch_Returns200AndNewETag()
+    {
+        var created = await CreateAsync();
+        using var request = PutRequest(created.Id, "\"1\"");
+
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("\"2\"", response.Headers.ETag?.Tag);
+    }
+
+    [Fact]
+    public async Task Put_WithStaleIfMatch_Returns412()
+    {
+        var created = await CreateAsync();
+        using var firstOperator = PutRequest(created.Id, "\"1\"");
+        using var secondOperator = PutRequest(created.Id, "\"1\"");
+
+        var first = await _client.SendAsync(firstOperator);
+        var second = await _client.SendAsync(secondOperator);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.PreconditionFailed, second.StatusCode);
+        using var body = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
+        Assert.Equal(412, body.RootElement.GetProperty("status").GetInt32());
+    }
+
+    [Fact]
+    public async Task Delete_WithStaleIfMatch_Returns412()
+    {
+        var created = await CreateAsync();
+        using var update = PutRequest(created.Id, ifMatch: null);
+        await _client.SendAsync(update);
+        using var delete = new HttpRequestMessage(HttpMethod.Delete, $"/api/tasks/{created.Id}");
+        delete.Headers.TryAddWithoutValidation("If-Match", "\"1\"");
+
+        var response = await _client.SendAsync(delete);
+
+        Assert.Equal(HttpStatusCode.PreconditionFailed, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task History_ReturnsStatusChanges()
+    {
+        var created = await CreateAsync();
+        using var update = PutRequest(created.Id, ifMatch: null);
+        await _client.SendAsync(update);
+
+        var history = await _client.GetFromJsonAsync<List<TaskStatusChangeResponse>>($"/api/tasks/{created.Id}/history", Json);
+
+        Assert.Equal(
+            [((TaskItemStatus?)null, TaskItemStatus.Pendente), (TaskItemStatus.Pendente, TaskItemStatus.EmProgresso)],
+            history!.Select(h => (h.FromStatus, h.ToStatus)));
+    }
+
+    [Fact]
+    public async Task History_MissingTask_Returns404()
+    {
+        var response = await _client.GetAsync($"/api/tasks/{Guid.NewGuid()}/history");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task List_OverdueFilter_ReturnsOnlyOverdueTasks()
+    {
+        var overdue = await CreateAsync(NewTask() with { DueDate = new DateOnly(2020, 1, 1) });
+        var onTime = await CreateAsync(NewTask() with { DueDate = new DateOnly(2099, 1, 1) });
+
+        var tasks = await _client.GetFromJsonAsync<List<TaskResponse>>("/api/tasks?overdue=true", Json);
+
+        Assert.Contains(tasks!, t => t.Id == overdue.Id && t.IsOverdue);
+        Assert.DoesNotContain(tasks!, t => t.Id == onTime.Id);
+    }
+
+    private static HttpRequestMessage PutRequest(Guid id, string? ifMatch)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Put, $"/api/tasks/{id}")
+        {
+            Content = JsonContent.Create(new UpdateTaskRequest { Title = "Carga conferida", Status = TaskItemStatus.EmProgresso }, options: Json)
+        };
+
+        if (ifMatch is not null)
+        {
+            request.Headers.TryAddWithoutValidation("If-Match", ifMatch);
+        }
+
+        return request;
+    }
+
     private static CreateTaskRequest NewTask() => new()
     {
-        Title = "Tarefa de integração",
+        Title = "Agendar coleta do pedido 4521",
         Description = "Criada pelos testes de API",
         DueDate = new DateOnly(2026, 10, 1),
-        Status = "Pendente"
+        Status = TaskItemStatus.Pendente
     };
+
+    private Task<HttpResponseMessage> PostJsonAsync(string json) =>
+        _client.PostAsync("/api/tasks", new StringContent(json, Encoding.UTF8, "application/json"));
 
     private async Task<TaskResponse> CreateAsync(CreateTaskRequest? request = null)
     {
-        var response = await _client.PostAsJsonAsync("/api/tasks", request ?? NewTask());
+        var response = await _client.PostAsJsonAsync("/api/tasks", request ?? NewTask(), Json);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<TaskResponse>())!;
+        return (await response.Content.ReadFromJsonAsync<TaskResponse>(Json))!;
     }
 }

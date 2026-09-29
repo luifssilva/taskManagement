@@ -2,6 +2,7 @@ using FluentValidation;
 using TaskManagement.Application.DTOs;
 using TaskManagement.Application.Exceptions;
 using TaskManagement.Application.Interfaces;
+using TaskManagement.Domain.Enums;
 using TaskManagement.Tests.Support;
 
 namespace TaskManagement.Tests.Application;
@@ -39,7 +40,7 @@ public class TaskServiceQueryTests
     public async Task ListAsync_OrdersByDueDateWithUndatedTasksLast()
     {
         var service = _builder.Build();
-        await service.CreateAsync(new CreateTaskRequest { Title = "Sem data", Status = "Pendente" });
+        await service.CreateAsync(new CreateTaskRequest { Title = "Sem data", Status = TaskItemStatus.Pendente });
         await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest(title: "Depois", dueDate: October2));
         await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest(title: "Antes", dueDate: October1));
 
@@ -75,10 +76,10 @@ public class TaskServiceQueryTests
     {
         var service = await SeedAsync();
 
-        var tasks = await service.ListAsync(new TaskFilterRequest { Status = "Pendente" });
+        var tasks = await service.ListAsync(new TaskFilterRequest { Status = TaskItemStatus.Pendente });
 
         Assert.Equal(2, tasks.Count);
-        Assert.All(tasks, t => Assert.Equal("Pendente", t.Status));
+        Assert.All(tasks, t => Assert.Equal(TaskItemStatus.Pendente, t.Status));
     }
 
     [Fact]
@@ -97,7 +98,7 @@ public class TaskServiceQueryTests
     {
         var service = await SeedAsync();
 
-        var tasks = await service.ListAsync(new TaskFilterRequest { Status = "Pendente", DueDate = October1 });
+        var tasks = await service.ListAsync(new TaskFilterRequest { Status = TaskItemStatus.Pendente, DueDate = October1 });
 
         var task = Assert.Single(tasks);
         Assert.Equal("Pendente em 1/10", task.Title);
@@ -108,7 +109,7 @@ public class TaskServiceQueryTests
     {
         var service = await SeedAsync();
 
-        var tasks = await service.ListAsync(new TaskFilterRequest { Status = "Concluída", DueDate = October2 });
+        var tasks = await service.ListAsync(new TaskFilterRequest { Status = TaskItemStatus.Concluida, DueDate = October2 });
 
         Assert.Empty(tasks);
     }
@@ -119,7 +120,7 @@ public class TaskServiceQueryTests
         var service = _builder.Build();
 
         var exception = await Assert.ThrowsAsync<ValidationException>(
-            () => service.ListAsync(new TaskFilterRequest { Status = "Arquivada" }));
+            () => service.ListAsync(new TaskFilterRequest { Status = (TaskItemStatus)99 }));
 
         Assert.Contains(exception.Errors, e => e.PropertyName == nameof(TaskFilterRequest.Status));
     }
@@ -132,7 +133,7 @@ public class TaskServiceQueryTests
         var tasks = await service.SearchAsync("relatório");
 
         var task = Assert.Single(tasks);
-        Assert.Equal("Enviar relatório mensal", task.Title);
+        Assert.Equal("Emitir relatório de entregas", task.Title);
     }
 
     [Fact]
@@ -143,7 +144,7 @@ public class TaskServiceQueryTests
         var tasks = await service.SearchAsync("fornecedor");
 
         var task = Assert.Single(tasks);
-        Assert.Equal("Reunião", task.Title);
+        Assert.Equal("Agendar coleta", task.Title);
     }
 
     [Fact]
@@ -151,7 +152,7 @@ public class TaskServiceQueryTests
     {
         var service = await SeedSearchAsync();
 
-        var tasks = await service.SearchAsync("  FINANCEIRO ");
+        var tasks = await service.SearchAsync("  TRANSPORTADORA ");
 
         Assert.Equal(2, tasks.Count);
     }
@@ -182,19 +183,19 @@ public class TaskServiceQueryTests
     private async Task<ITaskService> SeedAsync()
     {
         var service = _builder.Build();
-        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Pendente em 1/10", dueDate: October1, status: "Pendente"));
-        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Pendente em 2/10", dueDate: October2, status: "Pendente"));
-        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Concluída em 1/10", dueDate: October1, status: "Concluída"));
-        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Em progresso em 2/10", dueDate: October2, status: "Em progresso"));
+        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Pendente em 1/10", dueDate: October1, status: TaskItemStatus.Pendente));
+        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Pendente em 2/10", dueDate: October2, status: TaskItemStatus.Pendente));
+        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Concluída em 1/10", dueDate: October1, status: TaskItemStatus.Concluida));
+        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Em progresso em 2/10", dueDate: October2, status: TaskItemStatus.EmProgresso));
         return service;
     }
 
     private async Task<ITaskService> SeedSearchAsync()
     {
         var service = _builder.Build();
-        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Enviar relatório mensal", "Para o time financeiro"));
-        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Reunião", "Alinhar contrato com fornecedor"));
-        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Revisar orçamento Financeiro", null));
+        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Emitir relatório de entregas", "Consolidar entregas do dia para a transportadora"));
+        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Agendar coleta", "Confirmar janela de coleta com o fornecedor"));
+        await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest("Revisar contrato da Transportadora Sul", null));
         return service;
     }
 }

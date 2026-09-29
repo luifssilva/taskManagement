@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using TaskManagement.Domain.Enums;
 using TaskManagement.Domain.Exceptions;
 
@@ -8,12 +9,15 @@ namespace TaskManagement.Domain.Entities;
 /// </summary>
 /// <remarks>
 /// The entity protects its own invariants: state can only change through <see cref="Create"/>
-/// and <see cref="Update"/>, which reject invalid titles, descriptions and statuses.
+/// and <see cref="Update"/>, which reject invalid titles, descriptions and statuses, record every
+/// status change in <see cref="StatusHistory"/> and bump <see cref="Version"/>.
 /// </remarks>
 public class TaskItem
 {
     public const int TitleMaxLength = 200;
     public const int DescriptionMaxLength = 2000;
+
+    private readonly List<TaskStatusChange> _statusHistory = [];
 
     public Guid Id { get; private set; }
     public string Title { get; private set; } = string.Empty;
@@ -23,10 +27,23 @@ public class TaskItem
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? UpdatedAt { get; private set; }
 
+    /// <summary>Incremented on every update; used for optimistic concurrency (ETag).</summary>
+    public int Version { get; private set; }
+
+    /// <summary>Every status the task went through, starting with the initial one.</summary>
+    public IReadOnlyCollection<TaskStatusChange> StatusHistory => _statusHistory.AsReadOnly();
+
     // Required by EF Core.
     private TaskItem()
     {
     }
+
+    /// <summary>
+    /// A task is overdue when its due date is before <paramref name="today"/> and it is not completed.
+    /// A task due today is not overdue yet.
+    /// </summary>
+    public static Expression<Func<TaskItem, bool>> OverdueAsOf(DateOnly today) =>
+        task => task.Status != TaskItemStatus.Concluida && task.DueDate != null && task.DueDate < today;
 
     public static TaskItem Create(
         string title,
@@ -38,10 +55,12 @@ public class TaskItem
         var task = new TaskItem
         {
             Id = Guid.NewGuid(),
-            CreatedAt = createdAt
+            CreatedAt = createdAt,
+            Version = 1
         };
 
         task.Apply(title, description, dueDate, status);
+        task._statusHistory.Add(new TaskStatusChange(null, status, createdAt));
         return task;
     }
 
@@ -52,9 +71,22 @@ public class TaskItem
         TaskItemStatus status,
         DateTimeOffset updatedAt)
     {
+        var previousStatus = Status;
+
         Apply(title, description, dueDate, status);
+
+        if (previousStatus != status)
+        {
+            _statusHistory.Add(new TaskStatusChange(previousStatus, status, updatedAt));
+        }
+
         UpdatedAt = updatedAt;
+        Version++;
     }
+
+    /// <inheritdoc cref="OverdueAsOf"/>
+    public bool IsOverdue(DateOnly today) =>
+        Status != TaskItemStatus.Concluida && DueDate.HasValue && DueDate.Value < today;
 
     private void Apply(string title, string? description, DateOnly? dueDate, TaskItemStatus status)
     {

@@ -1,6 +1,7 @@
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.Application.DTOs;
+using TaskManagement.Domain.Enums;
 using TaskManagement.Tests.Support;
 
 namespace TaskManagement.Tests.Application;
@@ -18,10 +19,10 @@ public class TaskServiceCreateTests
         var response = await service.CreateAsync(request);
 
         Assert.NotEqual(Guid.Empty, response.Id);
-        Assert.Equal("Implementar API", response.Title);
-        Assert.Equal("Criar endpoints de tarefas", response.Description);
+        Assert.Equal("Conferir carga do pedido 4521", response.Title);
+        Assert.Equal("Validar volumes e lacres antes da expedição", response.Description);
         Assert.Equal(new DateOnly(2026, 10, 1), response.DueDate);
-        Assert.Equal("Pendente", response.Status);
+        Assert.Equal(TaskItemStatus.Pendente, response.Status);
         Assert.Equal(TaskServiceBuilder.Now, response.CreatedAt);
         Assert.Null(response.UpdatedAt);
         Assert.True(await _builder.Context.Tasks.AnyAsync(t => t.Id == response.Id));
@@ -43,11 +44,11 @@ public class TaskServiceCreateTests
     {
         var service = _builder.Build();
 
-        var response = await service.CreateAsync(new CreateTaskRequest { Title = "Tarefa", Status = "Concluída" });
+        var response = await service.CreateAsync(new CreateTaskRequest { Title = "Tarefa", Status = TaskItemStatus.Concluida });
 
         Assert.Null(response.Description);
         Assert.Null(response.DueDate);
-        Assert.Equal("Concluída", response.Status);
+        Assert.Equal(TaskItemStatus.Concluida, response.Status);
     }
 
     [Fact]
@@ -99,12 +100,14 @@ public class TaskServiceCreateTests
         Assert.Contains(exception.Errors, e => e.PropertyName == nameof(CreateTaskRequest.Description));
     }
 
+    // Values outside the enum reach the service when the JSON carries a number (e.g. "status": 99).
     [Theory]
-    [InlineData("Cancelada")]
-    [InlineData("Done")]
-    [InlineData("1")]
-    public async Task CreateAsync_WithInvalidStatus_ThrowsValidationException(string status)
+    [InlineData(0)]
+    [InlineData(4)]
+    [InlineData(99)]
+    public async Task CreateAsync_WithInvalidStatus_ThrowsValidationException(int value)
     {
+        var status = (TaskItemStatus)value;
         var service = _builder.Build();
         var request = TaskServiceBuilder.ValidCreateRequest(status: status);
 
@@ -114,13 +117,11 @@ public class TaskServiceCreateTests
         Assert.Empty(_builder.Context.Tasks);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    public async Task CreateAsync_WithoutStatus_ThrowsValidationException(string? status)
+    [Fact]
+    public async Task CreateAsync_WithoutStatus_ThrowsValidationException()
     {
         var service = _builder.Build();
-        var request = TaskServiceBuilder.ValidCreateRequest() with { Status = status };
+        var request = TaskServiceBuilder.ValidCreateRequest() with { Status = null };
 
         var exception = await Assert.ThrowsAsync<ValidationException>(() => service.CreateAsync(request));
 
@@ -128,16 +129,15 @@ public class TaskServiceCreateTests
     }
 
     [Theory]
-    [InlineData("pendente", "Pendente")]
-    [InlineData("EM PROGRESSO", "Em progresso")]
-    [InlineData("EmProgresso", "Em progresso")]
-    [InlineData("concluida", "Concluída")]
-    public async Task CreateAsync_AcceptsStatusIgnoringCaseAndAccents(string status, string expected)
+    [InlineData(TaskItemStatus.Pendente)]
+    [InlineData(TaskItemStatus.EmProgresso)]
+    [InlineData(TaskItemStatus.Concluida)]
+    public async Task CreateAsync_AcceptsEveryStatus(TaskItemStatus status)
     {
         var service = _builder.Build();
 
         var response = await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest(status: status));
 
-        Assert.Equal(expected, response.Status);
+        Assert.Equal(status, response.Status);
     }
 }

@@ -1,3 +1,5 @@
+using TaskManagement.Domain.Enums;
+
 namespace TaskManagement.Application.DTOs;
 
 /// <summary>
@@ -10,20 +12,28 @@ public sealed record TaskResponse
     public Guid Id { get; init; }
 
     /// <summary>Task title.</summary>
-    /// <example>Implementar API</example>
+    /// <example>Conferir carga do pedido 4521</example>
     public string Title { get; init; } = string.Empty;
 
     /// <summary>Task description, if any.</summary>
-    /// <example>Criar endpoints de tarefas</example>
+    /// <example>Validar volumes e lacres antes da expedição</example>
     public string? Description { get; init; }
 
     /// <summary>Due date, if any.</summary>
     /// <example>2026-10-01</example>
     public DateOnly? DueDate { get; init; }
 
-    /// <summary>"Pendente", "Em progresso" or "Concluída".</summary>
+    /// <summary>Pendente, EmProgresso or Concluida.</summary>
     /// <example>Pendente</example>
-    public string Status { get; init; } = string.Empty;
+    public TaskItemStatus Status { get; init; }
+
+    /// <summary>Whether the due date has passed and the task is not Concluida.</summary>
+    /// <example>false</example>
+    public bool IsOverdue { get; init; }
+
+    /// <summary>Current version of the task, also returned as the ETag header.</summary>
+    /// <example>1</example>
+    public int Version { get; init; }
 
     /// <summary>When the task was created (UTC).</summary>
     public DateTimeOffset CreatedAt { get; init; }

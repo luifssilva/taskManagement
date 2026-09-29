@@ -13,6 +13,8 @@ builder.Services
 
 var app = builder.Build();
 
+await app.Services.InitializeDatabaseAsync();
+
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
@@ -32,7 +34,7 @@ if (!app.Environment.IsDevelopment())
 
 app.MapControllers();
 
-app.Run();
+await app.RunAsync();
 
 // Exposes the entry point to integration tests (WebApplicationFactory).
 public partial class Program;

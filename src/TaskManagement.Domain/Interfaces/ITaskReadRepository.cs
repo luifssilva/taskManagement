@@ -1,5 +1,5 @@
 using TaskManagement.Domain.Entities;
-using TaskManagement.Domain.Enums;
+using TaskManagement.Domain.Queries;
 
 namespace TaskManagement.Domain.Interfaces;
 
@@ -10,11 +10,8 @@ public interface ITaskReadRepository
 {
     Task<TaskItem?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>Lists tasks, optionally filtered by status and/or exact due date.</summary>
-    Task<IReadOnlyList<TaskItem>> ListAsync(
-        TaskItemStatus? status,
-        DateOnly? dueDate,
-        CancellationToken cancellationToken = default);
+    /// <summary>Lists tasks matching <paramref name="criteria"/>.</summary>
+    Task<IReadOnlyList<TaskItem>> ListAsync(TaskListCriteria criteria, CancellationToken cancellationToken = default);
 
     /// <summary>Finds tasks whose title or description contains <paramref name="term"/> (case-insensitive).</summary>
     Task<IReadOnlyList<TaskItem>> SearchAsync(string term, CancellationToken cancellationToken = default);

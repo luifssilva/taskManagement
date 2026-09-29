@@ -6,8 +6,9 @@ using TaskManagement.Application.Exceptions;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Application.Mappings;
 using TaskManagement.Domain.Entities;
-using TaskManagement.Domain.Enums;
+using TaskManagement.Domain.Exceptions;
 using TaskManagement.Domain.Interfaces;
+using TaskManagement.Domain.Queries;
 
 namespace TaskManagement.Application.Services;
 
@@ -39,6 +40,9 @@ public sealed class TaskService : ITaskService
         _logger = logger;
     }
 
+    // "Today" follows the server's local time zone, which is where the operation runs.
+    private DateOnly Today => DateOnly.FromDateTime(_timeProvider.GetLocalNow().DateTime);
+
     public async Task<TaskResponse> CreateAsync(CreateTaskRequest request, CancellationToken cancellationToken = default)
     {
         await ValidateAsync(_createValidator, request, cancellationToken);
@@ -47,21 +51,27 @@ public sealed class TaskService : ITaskService
             request.Title!,
             request.Description,
             request.DueDate,
-            ParseStatus(request.Status),
+            request.Status!.Value,
             _timeProvider.GetUtcNow());
 
         await _writeRepository.AddAsync(task, cancellationToken);
 
         _logger.LogInformation("Task {TaskId} created with status {Status}", task.Id, task.Status);
-        return task.ToResponse();
+        return task.ToResponse(Today);
     }
 
     public async Task<TaskResponse> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var task = await _readRepository.GetByIdAsync(id, cancellationToken)
-                   ?? throw new TaskNotFoundException(id);
+        var task = await GetExistingAsync(id, cancellationToken);
+        return task.ToResponse(Today);
+    }
 
-        return task.ToResponse();
+    public async Task<IReadOnlyList<TaskStatusChangeResponse>> GetHistoryAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var task = await GetExistingAsync(id, cancellationToken);
+        return task.ToHistoryResponse();
     }
 
     public async Task<IReadOnlyList<TaskResponse>> ListAsync(
@@ -70,10 +80,15 @@ public sealed class TaskService : ITaskService
     {
         await ValidateAsync(_filterValidator, filter, cancellationToken);
 
-        TaskItemStatus? status = filter.Status is null ? null : ParseStatus(filter.Status);
-        var tasks = await _readRepository.ListAsync(status, filter.DueDate, cancellationToken);
+        var today = Today;
+        var criteria = new TaskListCriteria(
+            filter.Status,
+            filter.DueDate,
+            filter.Overdue,
+            today);
 
-        return tasks.ToResponse();
+        var tasks = await _readRepository.ListAsync(criteria, cancellationToken);
+        return tasks.ToResponse(today);
     }
 
     public async Task<IReadOnlyList<TaskResponse>> SearchAsync(
@@ -87,40 +102,70 @@ public sealed class TaskService : ITaskService
         }
 
         var tasks = await _readRepository.SearchAsync(term.Trim(), cancellationToken);
-        return tasks.ToResponse();
+        return tasks.ToResponse(Today);
     }
 
     public async Task<TaskResponse> UpdateAsync(
         Guid id,
         UpdateTaskRequest request,
+        int? expectedVersion = null,
         CancellationToken cancellationToken = default)
     {
         await ValidateAsync(_updateValidator, request, cancellationToken);
 
-        var task = await _writeRepository.FindForUpdateAsync(id, cancellationToken)
-                   ?? throw new TaskNotFoundException(id);
+        var task = await GetForChangeAsync(id, expectedVersion, cancellationToken);
+        var previousStatus = task.Status;
 
         task.Update(
             request.Title!,
             request.Description,
             request.DueDate,
-            ParseStatus(request.Status),
+            request.Status!.Value,
             _timeProvider.GetUtcNow());
 
         await _writeRepository.UpdateAsync(task, cancellationToken);
 
-        _logger.LogInformation("Task {TaskId} updated with status {Status}", task.Id, task.Status);
-        return task.ToResponse();
+        if (previousStatus != task.Status)
+        {
+            _logger.LogInformation(
+                "Task {TaskId} updated; status changed from {PreviousStatus} to {Status}",
+                task.Id, previousStatus, task.Status);
+        }
+        else
+        {
+            _logger.LogInformation("Task {TaskId} updated with status {Status}", task.Id, task.Status);
+        }
+
+        return task.ToResponse(Today);
     }
 
-    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(Guid id, int? expectedVersion = null, CancellationToken cancellationToken = default)
     {
-        var task = await _writeRepository.FindForUpdateAsync(id, cancellationToken)
-                   ?? throw new TaskNotFoundException(id);
+        var task = await GetForChangeAsync(id, expectedVersion, cancellationToken);
 
         await _writeRepository.RemoveAsync(task, cancellationToken);
 
         _logger.LogInformation("Task {TaskId} deleted", id);
+    }
+
+    private async Task<TaskItem> GetExistingAsync(Guid id, CancellationToken cancellationToken) =>
+        await _readRepository.GetByIdAsync(id, cancellationToken)
+        ?? throw new TaskNotFoundException(id);
+
+    private async Task<TaskItem> GetForChangeAsync(Guid id, int? expectedVersion, CancellationToken cancellationToken)
+    {
+        var task = await _writeRepository.FindForUpdateAsync(id, cancellationToken)
+                   ?? throw new TaskNotFoundException(id);
+
+        if (expectedVersion.HasValue && expectedVersion.Value != task.Version)
+        {
+            _logger.LogWarning(
+                "Concurrency conflict on task {TaskId}: expected version {ExpectedVersion}, current {CurrentVersion}",
+                id, expectedVersion.Value, task.Version);
+            throw new ConcurrencyConflictException(id);
+        }
+
+        return task;
     }
 
     private async Task ValidateAsync<T>(IValidator<T> validator, T request, CancellationToken cancellationToken)
@@ -138,10 +183,4 @@ public sealed class TaskService : ITaskService
 
         throw new ValidationException(result.Errors);
     }
-
-    // Only called after validation, so an unknown value here is a programming error.
-    private static TaskItemStatus ParseStatus(string? status) =>
-        TaskItemStatusExtensions.TryParse(status, out var parsed)
-            ? parsed
-            : throw new InvalidOperationException($"Status '{status}' should have been rejected by validation.");
 }

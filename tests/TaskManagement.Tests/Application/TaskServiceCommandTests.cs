@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.Application.DTOs;
 using TaskManagement.Application.Exceptions;
+using TaskManagement.Domain.Enums;
 using TaskManagement.Tests.Support;
 
 namespace TaskManagement.Tests.Application;
@@ -15,7 +16,7 @@ public class TaskServiceCommandTests
         Title = "Título atualizado",
         Description = "Descrição atualizada",
         DueDate = new DateOnly(2026, 10, 15),
-        Status = "Em progresso"
+        Status = TaskItemStatus.EmProgresso
     };
 
     [Fact]
@@ -32,7 +33,7 @@ public class TaskServiceCommandTests
         Assert.Equal("Título atualizado", updated.Title);
         Assert.Equal("Descrição atualizada", updated.Description);
         Assert.Equal(new DateOnly(2026, 10, 15), updated.DueDate);
-        Assert.Equal("Em progresso", updated.Status);
+        Assert.Equal(TaskItemStatus.EmProgresso, updated.Status);
         Assert.Equal(created.CreatedAt, updated.CreatedAt);
         Assert.Equal(updatedAt, updated.UpdatedAt);
 
@@ -46,11 +47,11 @@ public class TaskServiceCommandTests
         var service = _builder.Build();
         var created = await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest());
 
-        var updated = await service.UpdateAsync(created.Id, new UpdateTaskRequest { Title = "Só título", Status = "Concluída" });
+        var updated = await service.UpdateAsync(created.Id, new UpdateTaskRequest { Title = "Só título", Status = TaskItemStatus.Concluida });
 
         Assert.Null(updated.Description);
         Assert.Null(updated.DueDate);
-        Assert.Equal("Concluída", updated.Status);
+        Assert.Equal(TaskItemStatus.Concluida, updated.Status);
     }
 
     [Fact]
@@ -66,12 +67,12 @@ public class TaskServiceCommandTests
     }
 
     [Theory]
-    [InlineData("", "Pendente", nameof(UpdateTaskRequest.Title))]
-    [InlineData("Título", "Inválido", nameof(UpdateTaskRequest.Status))]
+    [InlineData("", TaskItemStatus.Pendente, nameof(UpdateTaskRequest.Title))]
+    [InlineData("Título", (TaskItemStatus)99, nameof(UpdateTaskRequest.Status))]
     [InlineData("Título", null, nameof(UpdateTaskRequest.Status))]
     public async Task UpdateAsync_WithInvalidData_ThrowsValidationExceptionAndKeepsTask(
         string title,
-        string? status,
+        TaskItemStatus? status,
         string invalidProperty)
     {
         var service = _builder.Build();

@@ -18,10 +18,36 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(t => t.Description)
             .HasMaxLength(TaskItem.DescriptionMaxLength);
 
-        builder.Property(t => t.Status)
-            .IsRequired()
-            .HasConversion<string>();
+        // Status is stored as the enum's int value, a foreign key to the status domain table.
+        builder.HasOne<TaskItemStatusDefinition>()
+            .WithMany()
+            .HasForeignKey(t => t.Status)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(t => t.CreatedAt).IsRequired();
+
+        builder.Property(t => t.Version).IsConcurrencyToken();
+
+        // The history is part of the task aggregate: loaded, saved and deleted with it.
+        builder.OwnsMany(t => t.StatusHistory, history =>
+        {
+            history.WithOwner().HasForeignKey("TaskItemId");
+            history.Property<int>("Id");
+            history.HasKey("Id");
+
+            history.HasOne<TaskItemStatusDefinition>()
+                .WithMany()
+                .HasForeignKey(h => h.FromStatus)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            history.HasOne<TaskItemStatusDefinition>()
+                .WithMany()
+                .HasForeignKey(h => h.ToStatus)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            history.Property(h => h.ChangedAt).IsRequired();
+        });
+
+        builder.Navigation(t => t.StatusHistory).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

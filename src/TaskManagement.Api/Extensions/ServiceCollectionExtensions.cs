@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.OpenApi.Models;
@@ -14,8 +15,14 @@ public static class ServiceCollectionExtensions
     {
         services
             .AddControllers()
-            // Hide serializer exception messages (they expose internal type names).
-            .AddJsonOptions(options => options.AllowInputFormatterExceptionMessages = false)
+            .AddJsonOptions(options =>
+            {
+                // Enums travel by name ("EmProgresso"); numeric values are also accepted on input.
+                options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+
+                // Hide serializer exception messages (they expose internal type names).
+                options.AllowInputFormatterExceptionMessages = false;
+            })
             .ConfigureApiBehaviorOptions(options =>
                 options.InvalidModelStateResponseFactory = CreateInvalidModelStateResponse);
 
@@ -89,8 +96,7 @@ public static class ServiceCollectionExtensions
             IncludeXmlComments(options, typeof(Program).Assembly);
             IncludeXmlComments(options, typeof(TaskResponse).Assembly);
 
-            options.SchemaFilter<TaskStatusOpenApiFilter>();
-            options.ParameterFilter<TaskStatusOpenApiFilter>();
+            options.SchemaFilter<TaskStatusSchemaFilter>();
             options.ParameterFilter<CamelCaseQueryParameterFilter>();
         });
 

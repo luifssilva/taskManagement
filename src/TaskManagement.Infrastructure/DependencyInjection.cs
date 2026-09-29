@@ -20,7 +20,18 @@ public static class DependencyInjection
         services.AddScoped<TaskRepository>();
         services.AddScoped<ITaskReadRepository>(sp => sp.GetRequiredService<TaskRepository>());
         services.AddScoped<ITaskWriteRepository>(sp => sp.GetRequiredService<TaskRepository>());
+        services.AddScoped<ITaskStatusReadRepository, TaskStatusRepository>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Creates the database and seeds the status domain table.
+    /// </summary>
+    public static async Task InitializeDatabaseAsync(this IServiceProvider services)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<TaskDbContext>();
+        await context.Database.EnsureCreatedAsync();
     }
 }

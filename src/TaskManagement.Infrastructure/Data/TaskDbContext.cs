@@ -11,6 +11,8 @@ public class TaskDbContext : DbContext
 
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
 
+    public DbSet<TaskItemStatusDefinition> TaskStatuses => Set<TaskItemStatusDefinition>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(TaskDbContext).Assembly);

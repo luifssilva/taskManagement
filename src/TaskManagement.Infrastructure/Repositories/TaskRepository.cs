@@ -1,7 +1,9 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.Domain.Entities;
-using TaskManagement.Domain.Enums;
+using TaskManagement.Domain.Exceptions;
 using TaskManagement.Domain.Interfaces;
+using TaskManagement.Domain.Queries;
 using TaskManagement.Infrastructure.Data;
 
 namespace TaskManagement.Infrastructure.Repositories;
@@ -24,20 +26,28 @@ public sealed class TaskRepository : ITaskReadRepository, ITaskWriteRepository
             .FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
 
     public async Task<IReadOnlyList<TaskItem>> ListAsync(
-        TaskItemStatus? status,
-        DateOnly? dueDate,
+        TaskListCriteria criteria,
         CancellationToken cancellationToken = default)
     {
         var query = _context.Tasks.AsNoTracking();
 
-        if (status.HasValue)
+        if (criteria.Status.HasValue)
         {
-            query = query.Where(t => t.Status == status.Value);
+            query = query.Where(t => t.Status == criteria.Status.Value);
         }
 
-        if (dueDate.HasValue)
+        if (criteria.DueDate.HasValue)
         {
-            query = query.Where(t => t.DueDate == dueDate.Value);
+            query = query.Where(t => t.DueDate == criteria.DueDate.Value);
+        }
+
+        if (criteria.Overdue == true)
+        {
+            query = query.Where(TaskItem.OverdueAsOf(criteria.Today));
+        }
+        else if (criteria.Overdue == false)
+        {
+            query = query.Where(Not(TaskItem.OverdueAsOf(criteria.Today)));
         }
 
         return await Order(query).ToListAsync(cancellationToken);
@@ -61,19 +71,30 @@ public sealed class TaskRepository : ITaskReadRepository, ITaskWriteRepository
     public async Task AddAsync(TaskItem task, CancellationToken cancellationToken = default)
     {
         await _context.Tasks.AddAsync(task, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        await SaveChangesAsync(task, cancellationToken);
     }
 
-    public async Task UpdateAsync(TaskItem task, CancellationToken cancellationToken = default)
-    {
-        _context.Tasks.Update(task);
-        await _context.SaveChangesAsync(cancellationToken);
-    }
+    // The task is tracked (loaded by FindForUpdateAsync), so change detection picks up the
+    // modified fields and the new history entries.
+    public Task UpdateAsync(TaskItem task, CancellationToken cancellationToken = default) =>
+        SaveChangesAsync(task, cancellationToken);
 
     public async Task RemoveAsync(TaskItem task, CancellationToken cancellationToken = default)
     {
         _context.Tasks.Remove(task);
-        await _context.SaveChangesAsync(cancellationToken);
+        await SaveChangesAsync(task, cancellationToken);
+    }
+
+    private async Task SaveChangesAsync(TaskItem task, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConcurrencyConflictException(task.Id);
+        }
     }
 
     // Tasks without a due date go last; ties are broken by creation time.
@@ -82,4 +103,10 @@ public sealed class TaskRepository : ITaskReadRepository, ITaskWriteRepository
             .OrderBy(t => t.DueDate == null)
             .ThenBy(t => t.DueDate)
             .ThenBy(t => t.CreatedAt);
+
+    private static Expression<Func<TaskItem, bool>> Not(
+        Expression<Func<TaskItem, bool>> predicate) =>
+        Expression.Lambda<Func<TaskItem, bool>>(
+            Expression.Not(predicate.Body),
+            predicate.Parameters);
 }

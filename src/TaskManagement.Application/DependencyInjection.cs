@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<ITaskService, TaskService>();
+        services.AddScoped<ITaskStatusService, TaskStatusService>();
 
         return services;
     }
