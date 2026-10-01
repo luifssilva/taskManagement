@@ -32,7 +32,7 @@ public class TaskItemOverdueAndHistoryTests
     }
 
     [Fact]
-    public void Create_StartsHistoryAndVersion()
+    public void Create_StartsHistory()
     {
         var task = TaskItem.Create("Tarefa", null, null, TaskItemStatus.EmProgresso, Now);
 
@@ -40,7 +40,6 @@ public class TaskItemOverdueAndHistoryTests
         Assert.Null(entry.FromStatus);
         Assert.Equal(TaskItemStatus.EmProgresso, entry.ToStatus);
         Assert.Equal(Now, entry.ChangedAt);
-        Assert.Equal(1, task.Version);
     }
 
     [Fact]
@@ -54,17 +53,15 @@ public class TaskItemOverdueAndHistoryTests
         Assert.Equal(TaskItemStatus.Pendente, last.FromStatus);
         Assert.Equal(TaskItemStatus.Concluida, last.ToStatus);
         Assert.Equal(Now.AddHours(1), last.ChangedAt);
-        Assert.Equal(2, task.Version);
     }
 
     [Fact]
-    public void Update_WithSameStatus_KeepsHistoryButBumpsVersion()
+    public void Update_WithSameStatus_KeepsHistory()
     {
         var task = TaskItem.Create("Tarefa", null, null, TaskItemStatus.Pendente, Now);
 
         task.Update("Tarefa renomeada", null, null, TaskItemStatus.Pendente, Now.AddHours(1));
 
         Assert.Single(task.StatusHistory);
-        Assert.Equal(2, task.Version);
     }
 }

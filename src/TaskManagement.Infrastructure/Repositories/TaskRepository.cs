@@ -1,7 +1,6 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.Domain.Entities;
-using TaskManagement.Domain.Exceptions;
 using TaskManagement.Domain.Interfaces;
 using TaskManagement.Domain.Queries;
 using TaskManagement.Infrastructure.Data;
@@ -71,30 +70,18 @@ public sealed class TaskRepository : ITaskReadRepository, ITaskWriteRepository
     public async Task AddAsync(TaskItem task, CancellationToken cancellationToken = default)
     {
         await _context.Tasks.AddAsync(task, cancellationToken);
-        await SaveChangesAsync(task, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     // The task is tracked (loaded by FindForUpdateAsync), so change detection picks up the
     // modified fields and the new history entries.
     public Task UpdateAsync(TaskItem task, CancellationToken cancellationToken = default) =>
-        SaveChangesAsync(task, cancellationToken);
+        _context.SaveChangesAsync(cancellationToken);
 
     public async Task RemoveAsync(TaskItem task, CancellationToken cancellationToken = default)
     {
         _context.Tasks.Remove(task);
-        await SaveChangesAsync(task, cancellationToken);
-    }
-
-    private async Task SaveChangesAsync(TaskItem task, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await _context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw new ConcurrencyConflictException(task.Id);
-        }
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     // Tasks without a due date go last; ties are broken by creation time.

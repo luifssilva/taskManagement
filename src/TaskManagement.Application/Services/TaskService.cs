@@ -6,7 +6,6 @@ using TaskManagement.Application.Exceptions;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Application.Mappings;
 using TaskManagement.Domain.Entities;
-using TaskManagement.Domain.Exceptions;
 using TaskManagement.Domain.Interfaces;
 using TaskManagement.Domain.Queries;
 
@@ -108,12 +107,11 @@ public sealed class TaskService : ITaskService
     public async Task<TaskResponse> UpdateAsync(
         Guid id,
         UpdateTaskRequest request,
-        int? expectedVersion = null,
         CancellationToken cancellationToken = default)
     {
         await ValidateAsync(_updateValidator, request, cancellationToken);
 
-        var task = await GetForChangeAsync(id, expectedVersion, cancellationToken);
+        var task = await GetForChangeAsync(id, cancellationToken);
         var previousStatus = task.Status;
 
         task.Update(
@@ -139,9 +137,9 @@ public sealed class TaskService : ITaskService
         return task.ToResponse(Today);
     }
 
-    public async Task DeleteAsync(Guid id, int? expectedVersion = null, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var task = await GetForChangeAsync(id, expectedVersion, cancellationToken);
+        var task = await GetForChangeAsync(id, cancellationToken);
 
         await _writeRepository.RemoveAsync(task, cancellationToken);
 
@@ -152,21 +150,9 @@ public sealed class TaskService : ITaskService
         await _readRepository.GetByIdAsync(id, cancellationToken)
         ?? throw new TaskNotFoundException(id);
 
-    private async Task<TaskItem> GetForChangeAsync(Guid id, int? expectedVersion, CancellationToken cancellationToken)
-    {
-        var task = await _writeRepository.FindForUpdateAsync(id, cancellationToken)
-                   ?? throw new TaskNotFoundException(id);
-
-        if (expectedVersion.HasValue && expectedVersion.Value != task.Version)
-        {
-            _logger.LogWarning(
-                "Concurrency conflict on task {TaskId}: expected version {ExpectedVersion}, current {CurrentVersion}",
-                id, expectedVersion.Value, task.Version);
-            throw new ConcurrencyConflictException(id);
-        }
-
-        return task;
-    }
+    private async Task<TaskItem> GetForChangeAsync(Guid id, CancellationToken cancellationToken) =>
+        await _writeRepository.FindForUpdateAsync(id, cancellationToken)
+        ?? throw new TaskNotFoundException(id);
 
     private async Task ValidateAsync<T>(IValidator<T> validator, T request, CancellationToken cancellationToken)
     {

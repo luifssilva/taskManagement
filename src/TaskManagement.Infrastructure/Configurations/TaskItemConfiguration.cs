@@ -26,8 +26,6 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
 
         builder.Property(t => t.CreatedAt).IsRequired();
 
-        builder.Property(t => t.Version).IsConcurrencyToken();
-
         // The history is part of the task aggregate: loaded, saved and deleted with it.
         builder.OwnsMany(t => t.StatusHistory, history =>
         {

@@ -236,63 +236,11 @@ public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
-    public async Task Get_ReturnsETagWithVersion()
-    {
-        var created = await CreateAsync();
-
-        var response = await _client.GetAsync($"/api/tasks/{created.Id}");
-
-        Assert.Equal("\"1\"", response.Headers.ETag?.Tag);
-    }
-
-    [Fact]
-    public async Task Put_WithCurrentIfMatch_Returns200AndNewETag()
-    {
-        var created = await CreateAsync();
-        using var request = PutRequest(created.Id, "\"1\"");
-
-        var response = await _client.SendAsync(request);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("\"2\"", response.Headers.ETag?.Tag);
-    }
-
-    [Fact]
-    public async Task Put_WithStaleIfMatch_Returns412()
-    {
-        var created = await CreateAsync();
-        using var firstOperator = PutRequest(created.Id, "\"1\"");
-        using var secondOperator = PutRequest(created.Id, "\"1\"");
-
-        var first = await _client.SendAsync(firstOperator);
-        var second = await _client.SendAsync(secondOperator);
-
-        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        Assert.Equal(HttpStatusCode.PreconditionFailed, second.StatusCode);
-        using var body = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
-        Assert.Equal(412, body.RootElement.GetProperty("status").GetInt32());
-    }
-
-    [Fact]
-    public async Task Delete_WithStaleIfMatch_Returns412()
-    {
-        var created = await CreateAsync();
-        using var update = PutRequest(created.Id, ifMatch: null);
-        await _client.SendAsync(update);
-        using var delete = new HttpRequestMessage(HttpMethod.Delete, $"/api/tasks/{created.Id}");
-        delete.Headers.TryAddWithoutValidation("If-Match", "\"1\"");
-
-        var response = await _client.SendAsync(delete);
-
-        Assert.Equal(HttpStatusCode.PreconditionFailed, response.StatusCode);
-    }
-
-    [Fact]
     public async Task History_ReturnsStatusChanges()
     {
         var created = await CreateAsync();
-        using var update = PutRequest(created.Id, ifMatch: null);
-        await _client.SendAsync(update);
+        var update = new UpdateTaskRequest { Title = "Carga conferida", Status = TaskItemStatus.EmProgresso };
+        (await _client.PutAsJsonAsync($"/api/tasks/{created.Id}", update, Json)).EnsureSuccessStatusCode();
 
         var history = await _client.GetFromJsonAsync<List<TaskStatusChangeResponse>>($"/api/tasks/{created.Id}/history", Json);
 
@@ -319,21 +267,6 @@ public class TasksApiTests : IClassFixture<WebApplicationFactory<Program>>
 
         Assert.Contains(tasks!, t => t.Id == overdue.Id && t.IsOverdue);
         Assert.DoesNotContain(tasks!, t => t.Id == onTime.Id);
-    }
-
-    private static HttpRequestMessage PutRequest(Guid id, string? ifMatch)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Put, $"/api/tasks/{id}")
-        {
-            Content = JsonContent.Create(new UpdateTaskRequest { Title = "Carga conferida", Status = TaskItemStatus.EmProgresso }, options: Json)
-        };
-
-        if (ifMatch is not null)
-        {
-            request.Headers.TryAddWithoutValidation("If-Match", ifMatch);
-        }
-
-        return request;
     }
 
     private static CreateTaskRequest NewTask() => new()

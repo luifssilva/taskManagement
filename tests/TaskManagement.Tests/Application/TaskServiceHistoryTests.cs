@@ -1,12 +1,11 @@
 using TaskManagement.Application.DTOs;
 using TaskManagement.Application.Exceptions;
 using TaskManagement.Domain.Enums;
-using TaskManagement.Domain.Exceptions;
 using TaskManagement.Tests.Support;
 
 namespace TaskManagement.Tests.Application;
 
-public class TaskServiceHistoryAndConcurrencyTests
+public class TaskServiceHistoryTests
 {
     private readonly TaskServiceBuilder _builder = new();
 
@@ -72,75 +71,5 @@ public class TaskServiceHistoryAndConcurrencyTests
         var service = _builder.Build();
 
         await Assert.ThrowsAsync<TaskNotFoundException>(() => service.GetHistoryAsync(Guid.NewGuid()));
-    }
-
-    [Fact]
-    public async Task UpdateAsync_IncrementsVersion()
-    {
-        var service = _builder.Build();
-        var created = await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest());
-
-        var updated = await service.UpdateAsync(created.Id, UpdateWithStatus(TaskItemStatus.EmProgresso));
-
-        Assert.Equal(1, created.Version);
-        Assert.Equal(2, updated.Version);
-    }
-
-    [Fact]
-    public async Task UpdateAsync_WithCurrentVersion_Succeeds()
-    {
-        var service = _builder.Build();
-        var created = await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest());
-
-        var updated = await service.UpdateAsync(created.Id, UpdateWithStatus(TaskItemStatus.EmProgresso), expectedVersion: created.Version);
-
-        Assert.Equal(TaskItemStatus.EmProgresso, updated.Status);
-    }
-
-    [Fact]
-    public async Task UpdateAsync_WithStaleVersion_ThrowsConflictAndKeepsTask()
-    {
-        var service = _builder.Build();
-        var created = await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest());
-        var afterOtherOperator = await service.UpdateAsync(created.Id, UpdateWithStatus(TaskItemStatus.EmProgresso));
-
-        var exception = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => service.UpdateAsync(created.Id, UpdateWithStatus(TaskItemStatus.Concluida), expectedVersion: created.Version));
-
-        Assert.Equal(created.Id, exception.TaskId);
-        Assert.Equal(afterOtherOperator, await service.GetByIdAsync(created.Id));
-    }
-
-    [Fact]
-    public async Task UpdateAsync_MissingTaskWithVersion_ThrowsNotFound()
-    {
-        var service = _builder.Build();
-
-        await Assert.ThrowsAsync<TaskNotFoundException>(
-            () => service.UpdateAsync(Guid.NewGuid(), UpdateWithStatus(TaskItemStatus.Concluida), expectedVersion: 1));
-    }
-
-    [Fact]
-    public async Task DeleteAsync_WithStaleVersion_ThrowsConflictAndKeepsTask()
-    {
-        var service = _builder.Build();
-        var created = await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest());
-        await service.UpdateAsync(created.Id, UpdateWithStatus(TaskItemStatus.EmProgresso));
-
-        await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => service.DeleteAsync(created.Id, expectedVersion: created.Version));
-
-        Assert.NotNull(await service.GetByIdAsync(created.Id));
-    }
-
-    [Fact]
-    public async Task DeleteAsync_WithCurrentVersion_RemovesTask()
-    {
-        var service = _builder.Build();
-        var created = await service.CreateAsync(TaskServiceBuilder.ValidCreateRequest());
-
-        await service.DeleteAsync(created.Id, expectedVersion: created.Version);
-
-        await Assert.ThrowsAsync<TaskNotFoundException>(() => service.GetByIdAsync(created.Id));
     }
 }

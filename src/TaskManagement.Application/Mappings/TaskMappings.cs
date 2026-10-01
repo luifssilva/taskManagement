@@ -13,7 +13,6 @@ internal static class TaskMappings
         DueDate = task.DueDate,
         Status = task.Status,
         IsOverdue = task.IsOverdue(today),
-        Version = task.Version,
         CreatedAt = task.CreatedAt,
         UpdatedAt = task.UpdatedAt
     };

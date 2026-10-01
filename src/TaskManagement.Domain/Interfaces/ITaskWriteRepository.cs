@@ -5,10 +5,6 @@ namespace TaskManagement.Domain.Interfaces;
 /// <summary>
 /// Persistence of task changes. Every method commits its change.
 /// </summary>
-/// <remarks>
-/// Saving a task that another request changed in the meantime raises
-/// <see cref="Exceptions.ConcurrencyConflictException"/>.
-/// </remarks>
 public interface ITaskWriteRepository
 {
     /// <summary>Loads a task that is going to be modified.</summary>

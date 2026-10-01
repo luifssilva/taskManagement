@@ -9,8 +9,8 @@ namespace TaskManagement.Domain.Entities;
 /// </summary>
 /// <remarks>
 /// The entity protects its own invariants: state can only change through <see cref="Create"/>
-/// and <see cref="Update"/>, which reject invalid titles, descriptions and statuses, record every
-/// status change in <see cref="StatusHistory"/> and bump <see cref="Version"/>.
+/// and <see cref="Update"/>, which reject invalid titles, descriptions and statuses and record every
+/// status change in <see cref="StatusHistory"/>.
 /// </remarks>
 public class TaskItem
 {
@@ -26,9 +26,6 @@ public class TaskItem
     public TaskItemStatus Status { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? UpdatedAt { get; private set; }
-
-    /// <summary>Incremented on every update; used for optimistic concurrency (ETag).</summary>
-    public int Version { get; private set; }
 
     /// <summary>Every status the task went through, starting with the initial one.</summary>
     public IReadOnlyCollection<TaskStatusChange> StatusHistory => _statusHistory.AsReadOnly();
@@ -55,8 +52,7 @@ public class TaskItem
         var task = new TaskItem
         {
             Id = Guid.NewGuid(),
-            CreatedAt = createdAt,
-            Version = 1
+            CreatedAt = createdAt
         };
 
         task.Apply(title, description, dueDate, status);
@@ -81,7 +77,6 @@ public class TaskItem
         }
 
         UpdatedAt = updatedAt;
-        Version++;
     }
 
     /// <inheritdoc cref="OverdueAsOf"/>

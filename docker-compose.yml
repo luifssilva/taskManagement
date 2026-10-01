@@ -1,0 +1,16 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: task-management-api
+    container_name: task-management-api
+    ports:
+      # host:container. Change the host side with API_PORT, e.g. `API_PORT=9000 docker compose up`.
+      - "${API_PORT:-8080}:8080"
+    environment:
+      # The container serves plain HTTP only, so Development skips the HTTPS redirection.
+      ASPNETCORE_ENVIRONMENT: Development
+      # "Today" (used by the overdue rule) follows the container time zone, which is UTC by default.
+      TZ: ${TZ:-America/Sao_Paulo}
+    restart: unless-stopped

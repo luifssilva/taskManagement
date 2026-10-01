@@ -2,11 +2,10 @@
 
 API RESTful (backend-only) para gestão de tarefas, construída com **ASP.NET Core 8 (Controllers)**, **Entity Framework Core InMemory** e arquitetura em camadas inspirada em **DDD / Clean Architecture**.
 
-Permite **criar, consultar, listar, filtrar, buscar, editar e excluir** tarefas. Os exemplos usam o contexto de uma operação logística (conferência de carga, agendamento de coleta, expedição). Por isso, além do CRUD, a API trata três preocupações típicas desse contexto:
+Permite **criar, consultar, listar, filtrar, buscar, editar e excluir** tarefas. Os exemplos usam o contexto de uma operação logística (conferência de carga, agendamento de coleta, expedição). Por isso, além do CRUD, a API trata duas preocupações típicas desse contexto:
 
 - **Prazo / SLA:** cada tarefa indica se está **vencida** (`isOverdue`), e a listagem filtra por isso (`?overdue=true`).
 - **Rastreabilidade:** toda mudança de status fica registrada e pode ser consultada em `GET /api/tasks/{id}/history`.
-- **Operadores simultâneos:** controle de concorrência otimista com `ETag` / `If-Match`, para que a alteração de um operador não sobrescreva silenciosamente a de outro.
 
 ---
 
@@ -35,10 +34,12 @@ Permite **criar, consultar, listar, filtrar, buscar, editar e excluir** tarefas.
 | `ILogger<T>` | Logging nativo do .NET |
 | `IExceptionHandler` + Problem Details (RFC 7807) | Tratamento centralizado de erros |
 | xUnit + `Microsoft.AspNetCore.Mvc.Testing` | Testes automatizados |
+| Docker / Docker Compose | Execução em container (opcional) |
 
 ## Pré-requisitos
 
 - [.NET SDK 8](https://dotnet.microsoft.com/download) ou superior (o projeto tem como alvo `net8.0`; SDKs mais novos também compilam).
+- **Ou**, para rodar em container: [Docker](https://docs.docker.com/get-docker/) com Docker Compose.
 
 Nenhum banco de dados ou serviço externo é necessário.
 
@@ -56,6 +57,18 @@ A API sobe em `http://localhost:5080` (perfil `http`). Para HTTPS: `dotnet run -
 
 > Os dados ficam em memória: são perdidos ao reiniciar a aplicação.
 
+### Com Docker
+
+```bash
+docker compose up --build
+```
+
+A API fica disponível em `http://localhost:8080` (Swagger em `http://localhost:8080/swagger`). Para usar outra porta no host: `API_PORT=9000 docker compose up --build`. Para parar: `docker compose down`.
+
+- O `Dockerfile` é multi-stage: a etapa de build restaura, **executa os testes** (a imagem só é gerada se todos passarem) e publica; a imagem final contém só o runtime do ASP.NET Core e roda com usuário não-root.
+- O container atende apenas HTTP na porta 8080 e roda em `Development` para não aplicar o redirecionamento HTTPS. Em produção, o TLS normalmente termina em um proxy reverso ou load balancer à frente do container.
+- O "hoje" da regra de tarefa vencida segue o fuso do container. O compose usa `America/Sao_Paulo` por padrão; para outro fuso: `TZ=America/Manaus docker compose up --build`.
+
 ## Swagger
 
 Com a aplicação rodando, acesse:
@@ -63,7 +76,7 @@ Com a aplicação rodando, acesse:
 - **UI:** http://localhost:5080/swagger
 - **Documento OpenAPI:** http://localhost:5080/swagger/v1/swagger.json
 
-O Swagger mostra todos os endpoints, parâmetros (inclusive o header `If-Match`), corpos de requisição com exemplos, respostas possíveis (200/201/204/400/404/412/500) e os valores permitidos de `status`. É possível testar os endpoints diretamente pela interface ("Try it out").
+O Swagger mostra todos os endpoints, parâmetros, corpos de requisição com exemplos, respostas possíveis (200/201/204/400/404/500) e os valores permitidos de `status`. É possível testar os endpoints diretamente pela interface ("Try it out").
 
 ## Como executar os testes
 
@@ -81,9 +94,9 @@ Os testes ficam em `tests/TaskManagement.Tests`:
 
 | Pasta | O que cobre |
 |---|---|
-| `Application/` | **Regras de negócio** do `TaskService`: criação, consulta, filtros (status, data, vencidas), busca, atualização, exclusão, histórico de status, concorrência, validações e cenários de erro. Usa o repositório real sobre um banco InMemory isolado por teste e um relógio fixo (`TimeProvider`). |
-| `Domain/` | Invariantes da entidade `TaskItem`, regra de vencimento, histórico, versão e alinhamento entre o enum de status e a tabela de domínio. |
-| `Api/` | Testes de integração do contrato HTTP (status codes, `Location`, `ETag`/`If-Match` → 412, status por nome/número e valores inválidos, tabela de status, formato de erro, Swagger) via `WebApplicationFactory`, e interpretação do header `If-Match`. |
+| `Application/` | **Regras de negócio** do `TaskService`: criação, consulta, filtros (status, data, vencidas), busca, atualização, exclusão, histórico de status, validações e cenários de erro. Usa o repositório real sobre um banco InMemory isolado por teste e um relógio fixo (`TimeProvider`). |
+| `Domain/` | Invariantes da entidade `TaskItem`, regra de vencimento, histórico e alinhamento entre o enum de status e a tabela de domínio. |
+| `Api/` | Testes de integração do contrato HTTP (status codes, `Location`, status por nome/número e valores inválidos, histórico, filtro de vencidas, tabela de status, formato de erro, Swagger) via `WebApplicationFactory`. |
 
 ---
 
@@ -93,11 +106,11 @@ Os testes ficam em `tests/TaskManagement.Tests`:
 |---|---|---|---|
 | `GET` | `/api/tasks` | Lista tarefas. Filtros opcionais e combináveis: `status`, `dueDate`, `overdue` | 200, 400 |
 | `GET` | `/api/tasks/search?term=...` | Busca por termo no título ou descrição | 200, 400 |
-| `GET` | `/api/tasks/{id}` | Consulta tarefa por ID (retorna `ETag`) | 200, 404 |
+| `GET` | `/api/tasks/{id}` | Consulta tarefa por ID | 200, 404 |
 | `GET` | `/api/tasks/{id}/history` | Histórico de mudanças de status | 200, 404 |
-| `POST` | `/api/tasks` | Cria tarefa | 201 (+ `Location`, `ETag`), 400 |
-| `PUT` | `/api/tasks/{id}` | Atualiza título, descrição, status e data de vencimento (`If-Match` opcional) | 200, 400, 404, 412 |
-| `DELETE` | `/api/tasks/{id}` | Exclui tarefa (`If-Match` opcional) | 204, 404, 412 |
+| `POST` | `/api/tasks` | Cria tarefa | 201 (+ `Location`), 400 |
+| `PUT` | `/api/tasks/{id}` | Atualiza título, descrição, status e data de vencimento | 200, 400, 404 |
+| `DELETE` | `/api/tasks/{id}` | Exclui tarefa | 204, 404 |
 | `GET` | `/api/task-statuses` | Lista a tabela de domínio de status (id, nome, descrição) | 200 |
 
 Qualquer erro inesperado retorna `500` com Problem Details genérico (sem stack trace).
@@ -112,7 +125,6 @@ Qualquer erro inesperado retorna `500` com Problem Details genérico (sem stack 
 | `dueDate` | data (`yyyy-MM-dd`) | não | Formato de data válido |
 | `status` | enum `TaskItemStatus` | sim | `Pendente`, `EmProgresso` ou `Concluida` (ou o número: 1, 2, 3) |
 | `isOverdue` | bool | calculado | `true` se `dueDate` for **anterior a hoje** e o status não for `Concluida` |
-| `version` | int | gerado | Começa em 1 e aumenta a cada atualização; é o valor do `ETag` |
 | `createdAt` / `updatedAt` | data/hora UTC | gerado | Auditoria simples |
 
 O `status` trafega pelo **nome do enum** (`"EmProgresso"`, sem diferenciar maiúsculas/minúsculas) ou pelo seu **número**, que é o Id da tabela de domínio. As respostas sempre usam o nome. A descrição legível de cada status (`"Em progresso"`, `"Concluída"`) vem da tabela, em `GET /api/task-statuses`:
@@ -146,7 +158,6 @@ Content-Type: application/json
 ```http
 HTTP/1.1 201 Created
 Location: http://localhost:5080/api/tasks/d0b377bf-818a-48d2-b242-cc23c3205266
-ETag: "1"
 
 {
   "id": "d0b377bf-818a-48d2-b242-cc23c3205266",
@@ -155,7 +166,6 @@ ETag: "1"
   "dueDate": "2026-10-01",
   "status": "Pendente",
   "isOverdue": false,
-  "version": 1,
   "createdAt": "2026-09-29T15:25:22.1508093+00:00",
   "updatedAt": null
 }
@@ -189,7 +199,7 @@ Retorna `200 OK` com a lista de tarefas cujo **título ou descrição contenha**
 GET /api/tasks/d0b377bf-818a-48d2-b242-cc23c3205266
 ```
 
-Retorna `200 OK` com a tarefa e o header `ETag: "<versão>"`. Se não existir:
+Retorna `200 OK` com a tarefa. Se não existir:
 
 ```http
 HTTP/1.1 404 Not Found
@@ -205,12 +215,11 @@ Content-Type: application/problem+json
 }
 ```
 
-### Atualizar (com controle de concorrência)
+### Atualizar
 
 ```http
 PUT /api/tasks/d0b377bf-818a-48d2-b242-cc23c3205266
 Content-Type: application/json
-If-Match: "1"
 
 {
   "title": "Conferir carga do pedido 4521",
@@ -220,25 +229,7 @@ If-Match: "1"
 }
 ```
 
-Retorna `200 OK` com a tarefa atualizada e o novo `ETag: "2"`. O `PUT` tem semântica de **substituição**: campos opcionais omitidos (`description`, `dueDate`) são limpos.
-
-Se outro operador alterou a tarefa depois que você a leu, o `If-Match` antigo não confere mais:
-
-```http
-HTTP/1.1 412 Precondition Failed
-Content-Type: application/problem+json
-
-{
-  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.13",
-  "title": "Precondition Failed",
-  "status": 412,
-  "detail": "Task 'd0b377bf-818a-48d2-b242-cc23c3205266' was modified by another request. Reload it and try again.",
-  "instance": "/api/tasks/d0b377bf-818a-48d2-b242-cc23c3205266",
-  "traceId": "0HNOU7NG8EJV2:00000001"
-}
-```
-
-Sem `If-Match`, a atualização é feita normalmente (última escrita vence), mantendo a API simples de usar pelo Swagger.
+Retorna `200 OK` com a tarefa atualizada. O `PUT` tem semântica de **substituição**: campos opcionais omitidos (`description`, `dueDate`) são limpos.
 
 ### Histórico de status
 
@@ -259,10 +250,9 @@ HTTP/1.1 200 OK
 
 ```http
 DELETE /api/tasks/d0b377bf-818a-48d2-b242-cc23c3205266
-If-Match: "2"
 ```
 
-Retorna `204 No Content`, `404 Not Found` se a tarefa não existir, ou `412` se o `If-Match` estiver desatualizado.
+Retorna `204 No Content`, ou `404 Not Found` se a tarefa não existir.
 
 ### Erro de validação
 
@@ -318,7 +308,7 @@ src/
 │   ├── Entities/                     # TaskItem (agregado), TaskStatusChange (value object do histórico),
 │   │                                 # TaskItemStatusDefinition (tabela de domínio de status)
 │   ├── Enums/TaskItemStatus.cs       # Valores = Ids da tabela de domínio
-│   ├── Exceptions/                   # DomainException, ConcurrencyConflictException
+│   ├── Exceptions/DomainException.cs
 │   ├── Queries/TaskListCriteria.cs   # Critérios de listagem
 │   └── Interfaces/                   # ITaskReadRepository, ITaskWriteRepository, ITaskStatusReadRepository
 │
@@ -339,7 +329,6 @@ src/
 │
 └── TaskManagement.Api/               # Entrada HTTP
     ├── Controllers/                  # TasksController, TaskStatusesController
-    ├── Http/TaskETag.cs              # Versão ↔ ETag / If-Match
     ├── Middleware/GlobalExceptionHandler.cs
     ├── Extensions/                   # Registro de controllers, erros e Swagger
     ├── Swagger/                      # Filtros de documentação
@@ -353,10 +342,10 @@ tests/
 
 | Camada | Responsabilidade | Depende de |
 |---|---|---|
-| **Domain** | Agregado `TaskItem` e suas regras: invariantes, regra de vencimento, histórico de status, versão. Contratos de repositório. Não conhece EF, HTTP nem DTOs. | nada |
-| **Application** | Casos de uso (`TaskService`): valida entrada, aciona o domínio, verifica a versão esperada, persiste via abstrações, registra logs e converte para DTOs. | Domain |
-| **Infrastructure** | Implementação da persistência com EF Core InMemory (`TaskDbContext`, `TaskRepository`, configurações, token de concorrência). | Domain |
-| **Api** | Recebe HTTP, traduz `ETag`/`If-Match`, delega ao serviço e devolve status codes adequados; tratamento global de erros; Swagger; composição da DI. | Application, Infrastructure |
+| **Domain** | Agregado `TaskItem` e suas regras: invariantes, regra de vencimento, histórico de status. Contratos de repositório. Não conhece EF, HTTP nem DTOs. | nada |
+| **Application** | Casos de uso (`TaskService`): valida entrada, aciona o domínio, persiste via abstrações, registra logs e converte para DTOs. | Domain |
+| **Infrastructure** | Implementação da persistência com EF Core InMemory (`TaskDbContext`, repositórios, configurações e carga da tabela de status). | Domain |
+| **Api** | Recebe HTTP, delega ao serviço e devolve status codes adequados; tratamento global de erros; Swagger; composição da DI. | Application, Infrastructure |
 
 ---
 
@@ -370,7 +359,7 @@ tests/
 
 ### SOLID na prática
 
-- **SRP:** o controller só traduz HTTP; `TaskService` orquestra casos de uso; os validadores só validam; `TaskRepository` só persiste; `GlobalExceptionHandler` só converte exceções em respostas; `TaskETag` só converte versão ↔ header.
+- **SRP:** o controller só traduz HTTP; `TaskService` orquestra casos de uso; os validadores só validam; `TaskRepository` só persiste; `GlobalExceptionHandler` só converte exceções em respostas.
 - **OCP:** novas regras de validação são adicionadas em validadores sem alterar o serviço; novos tipos de erro entram como um novo caso no handler; filtros de Swagger estendem a documentação sem mexer nos controllers.
 - **LSP:** o serviço funciona com qualquer implementação de `ITaskReadRepository`/`ITaskWriteRepository` e de `TimeProvider` (nos testes, um relógio fixo).
 - **ISP:** o repositório é dividido em **leitura** (`ITaskReadRepository`) e **escrita** (`ITaskWriteRepository`), em vez de uma interface genérica grande.
@@ -407,12 +396,9 @@ tests/
 - **Na API**, o status trafega pelo **nome do enum** (`JsonStringEnumConverter`): o JSON fica legível e não depende de números "mágicos"; o número também é aceito na entrada. Nomes desconhecidos são rejeitados na desserialização (400 apontando o campo `status`). Números fora do enum (ex.: `99`) passam pela desserialização e são barrados pelo FluentValidation (`IsInEnum`).
 - **Trade-offs:** os nomes do enum não têm espaço nem acento (`EmProgresso`, `Concluida`), então diferem da grafia do enunciado; a grafia exibível fica na tabela. Adicionar um novo status exige mudar o enum **e** a carga da tabela, algo intencional para um conjunto pequeno e estável como este. Se os status precisassem ser configuráveis em tempo de execução, o enum daria lugar a uma entidade consultada no banco.
 
-### Controle de concorrência (ETag / If-Match)
+### Concorrência (não implementada, de propósito)
 
-- Cada tarefa tem uma `version` que começa em 1 e aumenta a cada atualização. Ela é exposta no header `ETag` (em `GET`, `POST` e `PUT`) e no corpo.
-- `PUT` e `DELETE` aceitam `If-Match` opcional. Se a versão informada não é a atual, a API responde **412 Precondition Failed** em vez de sobrescrever a alteração de outro operador. `If-Match: *` apenas exige que a tarefa exista.
-- A verificação acontece em duas camadas: o serviço compara a versão esperada (conflito detectado ao ler), e `Version` é um **concurrency token** do EF Core, que cobre a corrida entre duas requisições que leram a mesma versão ao mesmo tempo (conflito detectado ao salvar).
-- **Trade-off:** o `If-Match` é opcional para não dificultar o uso pelo Swagger. Em produção, poderia ser obrigatório (`428 Precondition Required`).
+Se duas pessoas editam a mesma tarefa ao mesmo tempo, a **última gravação vence**. Para o escopo do desafio, isso é aceitável e mantém a API simples. Se fosse necessário, a evolução seria o controle otimista: um campo de versão na tarefa, configurado como *concurrency token* no EF Core e exposto via `ETag` / `If-Match`, respondendo `412 Precondition Failed` quando a versão enviada estiver desatualizada.
 
 ### Idempotência (não implementada, de propósito)
 
@@ -424,7 +410,7 @@ Em logística, WMS, TMS e transportadoras integram por API e **reenviam requisi�
 - O mapeamento fica em `TaskItemConfiguration` (`IEntityTypeConfiguration`), mantendo a entidade livre de atributos de persistência. O status é armazenado como inteiro (FK para a tabela de domínio de status).
 - O provider InMemory não aplica chaves estrangeiras; elas documentam o modelo e passam a ser garantidas pelo banco se o provider for trocado por um relacional.
 - **Repository Pattern foi adotado** conscientemente: (1) Domain e Application não dependem de EF Core, respeitando DIP; (2) consultas de filtro, busca e ordenação ficam concentradas em um só lugar; (3) permite trocar o provider sem tocar nas regras. O trade-off é uma camada extra sobre o `DbContext` (que já é um Unit of Work). Por isso o repositório é fino e cada operação de escrita salva imediatamente, sem um Unit of Work adicional — suficiente para operações de agregado único como as desta API.
-- Leituras usam `AsNoTracking()`; a escrita carrega a entidade rastreada (`FindForUpdateAsync`) e salva as alterações. Conflitos de concorrência do EF (`DbUpdateConcurrencyException`) são convertidos em `ConcurrencyConflictException` do domínio, para que as camadas superiores não conheçam o EF.
+- Leituras usam `AsNoTracking()`; a escrita carrega a entidade rastreada (`FindForUpdateAsync`) e salva as alterações.
 - Um único `TaskRepository` (scoped) atende às duas interfaces na mesma requisição.
 
 ### Estratégia de busca
@@ -451,7 +437,6 @@ Centralizada em `GlobalExceptionHandler` (`IExceptionHandler`) + `AddProblemDeta
 | `ValidationException` (FluentValidation) | 400 | Validation Error (com `errors` por campo) |
 | `DomainException` | 400 | Business Rule Violation |
 | `TaskNotFoundException` | 404 | Resource Not Found |
-| `ConcurrencyConflictException` | 412 | Precondition Failed |
 | qualquer outra | 500 | Internal Server Error (mensagem genérica, sem stack trace) |
 
 Os controllers não têm `try/catch`: o fluxo principal fica limpo e o mapeamento erro → HTTP fica em um único lugar. Rotas inexistentes também retornam Problem Details (`UseStatusCodePages`). Rotas com `{id:guid}` retornam 404 para IDs que não são GUID.
@@ -461,7 +446,7 @@ Os controllers não têm `try/catch`: o fluxo principal fica limpo e o mapeament
 `ILogger<T>` nativo, com logs estruturados:
 
 - `Information`: criação, atualização (incluindo a transição de status, ex.: `Pendente → EmProgresso`) e exclusão de tarefas — apenas ID e status, sem título/descrição, evitando registrar conteúdo possivelmente sensível; respostas de erro 4xx tratadas.
-- `Warning`: falhas de validação (apenas os nomes dos campos inválidos) e conflitos de concorrência (versão esperada × atual).
+- `Warning`: falhas de validação (apenas os nomes dos campos inválidos).
 - `Error`: exceções inesperadas, com a exceção completa (somente no log, nunca na resposta).
 
 ### Swagger / OpenAPI

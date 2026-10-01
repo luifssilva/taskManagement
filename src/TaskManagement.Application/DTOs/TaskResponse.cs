@@ -31,10 +31,6 @@ public sealed record TaskResponse
     /// <example>false</example>
     public bool IsOverdue { get; init; }
 
-    /// <summary>Current version of the task, also returned as the ETag header.</summary>
-    /// <example>1</example>
-    public int Version { get; init; }
-
     /// <summary>When the task was created (UTC).</summary>
     public DateTimeOffset CreatedAt { get; init; }
 
