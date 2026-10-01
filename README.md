@@ -53,7 +53,7 @@ dotnet build
 dotnet run --project src/TaskManagement.Api
 ```
 
-A API sobe em `http://localhost:5080` (perfil `http`). Para HTTPS: `dotnet run --project src/TaskManagement.Api --launch-profile https` (`https://localhost:7080`).
+A API sobe em `http://localhost:8080` (perfil `http`). Para HTTPS: `dotnet run --project src/TaskManagement.Api --launch-profile https` (`https://localhost:7080`).
 
 > Os dados ficam em memória: são perdidos ao reiniciar a aplicação.
 
@@ -73,8 +73,8 @@ A API fica disponível em `http://localhost:8080` (Swagger em `http://localhost:
 
 Com a aplicação rodando, acesse:
 
-- **UI:** http://localhost:5080/swagger
-- **Documento OpenAPI:** http://localhost:5080/swagger/v1/swagger.json
+- **UI:** http://localhost:8080/swagger
+- **Documento OpenAPI:** http://localhost:8080/swagger/v1/swagger.json
 
 O Swagger mostra todos os endpoints, parâmetros, corpos de requisição com exemplos, respostas possíveis (200/201/204/400/404/500) e os valores permitidos de `status`. É possível testar os endpoints diretamente pela interface ("Try it out").
 
