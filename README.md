@@ -25,16 +25,16 @@ Permite **criar, consultar, listar, filtrar, buscar, editar e excluir** tarefas.
 
 ## Tecnologias
 
-| Tecnologia | Uso |
-|---|---|
-| .NET 8 (LTS) / ASP.NET Core Web API | API com Controllers (sem Minimal API) |
-| Entity Framework Core 8 + provider **InMemory** | Persistência, sem banco externo |
-| FluentValidation 11 | Validação dos DTOs de entrada |
-| Swashbuckle (Swagger / OpenAPI) | Documentação e teste interativo |
-| `ILogger<T>` | Logging nativo do .NET |
-| `IExceptionHandler` + Problem Details (RFC 7807) | Tratamento centralizado de erros |
-| xUnit + `Microsoft.AspNetCore.Mvc.Testing` | Testes automatizados |
-| Docker / Docker Compose | Execução em container (opcional) |
+| Tecnologia                                       | Uso                                   |
+| ------------------------------------------------ | ------------------------------------- |
+| .NET 8 (LTS) / ASP.NET Core Web API              | API com Controllers (sem Minimal API) |
+| Entity Framework Core 8 + provider **InMemory**  | Persistência, sem banco externo       |
+| FluentValidation 11                              | Validação dos DTOs de entrada         |
+| Swashbuckle (Swagger / OpenAPI)                  | Documentação e teste interativo       |
+| `ILogger<T>`                                     | Logging nativo do .NET                |
+| `IExceptionHandler` + Problem Details (RFC 7807) | Tratamento centralizado de erros      |
+| xUnit + `Microsoft.AspNetCore.Mvc.Testing`       | Testes automatizados                  |
+| Docker / Docker Compose                          | Execução em container (opcional)      |
 
 ## Pré-requisitos
 
@@ -92,48 +92,48 @@ dotnet test --collect:"XPlat Code Coverage"
 
 Os testes ficam em `tests/TaskManagement.Tests`:
 
-| Pasta | O que cobre |
-|---|---|
+| Pasta          | O que cobre                                                                                                                                                                                                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Application/` | **Regras de negócio** do `TaskService`: criação, consulta, filtros (status, data, vencidas), busca, atualização, exclusão, histórico de status, validações e cenários de erro. Usa o repositório real sobre um banco InMemory isolado por teste e um relógio fixo (`TimeProvider`). |
-| `Domain/` | Invariantes da entidade `TaskItem`, regra de vencimento, histórico e alinhamento entre o enum de status e a tabela de domínio. |
-| `Api/` | Testes de integração do contrato HTTP (status codes, `Location`, status por nome/número e valores inválidos, histórico, filtro de vencidas, tabela de status, formato de erro, Swagger) via `WebApplicationFactory`. |
+| `Domain/`      | Invariantes da entidade `TaskItem`, regra de vencimento, histórico e alinhamento entre o enum de status e a tabela de domínio.                                                                                                                                                      |
+| `Api/`         | Testes de integração do contrato HTTP (status codes, `Location`, status por nome/número e valores inválidos, histórico, filtro de vencidas, tabela de status, formato de erro, Swagger) via `WebApplicationFactory`.                                                                |
 
 ---
 
 ## Endpoints
 
-| Método | Rota | Descrição | Respostas |
-|---|---|---|---|
-| `GET` | `/api/tasks` | Lista tarefas. Filtros opcionais e combináveis: `status`, `dueDate`, `overdue` | 200, 400 |
-| `GET` | `/api/tasks/search?term=...` | Busca por termo no título ou descrição | 200, 400 |
-| `GET` | `/api/tasks/{id}` | Consulta tarefa por ID | 200, 404 |
-| `GET` | `/api/tasks/{id}/history` | Histórico de mudanças de status | 200, 404 |
-| `POST` | `/api/tasks` | Cria tarefa | 201 (+ `Location`), 400 |
-| `PUT` | `/api/tasks/{id}` | Atualiza título, descrição, status e data de vencimento | 200, 400, 404 |
-| `DELETE` | `/api/tasks/{id}` | Exclui tarefa | 204, 404 |
-| `GET` | `/api/task-statuses` | Lista a tabela de domínio de status (id, nome, descrição) | 200 |
+| Método   | Rota                         | Descrição                                                                      | Respostas               |
+| -------- | ---------------------------- | ------------------------------------------------------------------------------ | ----------------------- |
+| `GET`    | `/api/tasks`                 | Lista tarefas. Filtros opcionais e combináveis: `status`, `dueDate`, `overdue` | 200, 400                |
+| `GET`    | `/api/tasks/search?term=...` | Busca por termo no título ou descrição                                         | 200, 400                |
+| `GET`    | `/api/tasks/{id}`            | Consulta tarefa por ID                                                         | 200, 404                |
+| `GET`    | `/api/tasks/{id}/history`    | Histórico de mudanças de status                                                | 200, 404                |
+| `POST`   | `/api/tasks`                 | Cria tarefa                                                                    | 201 (+ `Location`), 400 |
+| `PUT`    | `/api/tasks/{id}`            | Atualiza título, descrição, status e data de vencimento                        | 200, 400, 404           |
+| `DELETE` | `/api/tasks/{id}`            | Exclui tarefa                                                                  | 204, 404                |
+| `GET`    | `/api/task-statuses`         | Lista a tabela de domínio de status (id, nome, descrição)                      | 200                     |
 
 Qualquer erro inesperado retorna `500` com Problem Details genérico (sem stack trace).
 
 ### Modelo
 
-| Campo | Tipo | Obrigatório | Regras |
-|---|---|---|---|
-| `id` | `Guid` | gerado | Identificador único gerado pela aplicação |
-| `title` | string | sim | Não vazio, máx. 200 caracteres (espaços nas pontas são removidos) |
-| `description` | string | não | Máx. 2000 caracteres |
-| `dueDate` | data (`yyyy-MM-dd`) | não | Formato de data válido |
-| `status` | enum `TaskItemStatus` | sim | `Pendente`, `EmProgresso` ou `Concluida` (ou o número: 1, 2, 3) |
-| `isOverdue` | bool | calculado | `true` se `dueDate` for **anterior a hoje** e o status não for `Concluida` |
-| `createdAt` / `updatedAt` | data/hora UTC | gerado | Auditoria simples |
+| Campo                     | Tipo                  | Obrigatório | Regras                                                                     |
+| ------------------------- | --------------------- | ----------- | -------------------------------------------------------------------------- |
+| `id`                      | `Guid`                | gerado      | Identificador único gerado pela aplicação                                  |
+| `title`                   | string                | sim         | Não vazio, máx. 200 caracteres (espaços nas pontas são removidos)          |
+| `description`             | string                | não         | Máx. 2000 caracteres                                                       |
+| `dueDate`                 | data (`yyyy-MM-dd`)   | não         | Formato de data válido                                                     |
+| `status`                  | enum `TaskItemStatus` | sim         | `Pendente`, `EmProgresso` ou `Concluida` (ou o número: 1, 2, 3)            |
+| `isOverdue`               | bool                  | calculado   | `true` se `dueDate` for **anterior a hoje** e o status não for `Concluida` |
+| `createdAt` / `updatedAt` | data/hora UTC         | gerado      | Auditoria simples                                                          |
 
 O `status` trafega pelo **nome do enum** (`"EmProgresso"`, sem diferenciar maiúsculas/minúsculas) ou pelo seu **número**, que é o Id da tabela de domínio. As respostas sempre usam o nome. A descrição legível de cada status (`"Em progresso"`, `"Concluída"`) vem da tabela, em `GET /api/task-statuses`:
 
 ```json
 [
-  { "id": 1, "name": "Pendente",    "description": "Pendente" },
+  { "id": 1, "name": "Pendente", "description": "Pendente" },
   { "id": 2, "name": "EmProgresso", "description": "Em progresso" },
-  { "id": 3, "name": "Concluida",   "description": "Concluída" }
+  { "id": 3, "name": "Concluida", "description": "Concluída" }
 ]
 ```
 
@@ -340,12 +340,12 @@ tests/
 
 ### Responsabilidades das camadas
 
-| Camada | Responsabilidade | Depende de |
-|---|---|---|
-| **Domain** | Agregado `TaskItem` e suas regras: invariantes, regra de vencimento, histórico de status. Contratos de repositório. Não conhece EF, HTTP nem DTOs. | nada |
-| **Application** | Casos de uso (`TaskService`): valida entrada, aciona o domínio, persiste via abstrações, registra logs e converte para DTOs. | Domain |
-| **Infrastructure** | Implementação da persistência com EF Core InMemory (`TaskDbContext`, repositórios, configurações e carga da tabela de status). | Domain |
-| **Api** | Recebe HTTP, delega ao serviço e devolve status codes adequados; tratamento global de erros; Swagger; composição da DI. | Application, Infrastructure |
+| Camada             | Responsabilidade                                                                                                                                   | Depende de                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| **Domain**         | Agregado `TaskItem` e suas regras: invariantes, regra de vencimento, histórico de status. Contratos de repositório. Não conhece EF, HTTP nem DTOs. | nada                        |
+| **Application**    | Casos de uso (`TaskService`): valida entrada, aciona o domínio, persiste via abstrações, registra logs e converte para DTOs.                       | Domain                      |
+| **Infrastructure** | Implementação da persistência com EF Core InMemory (`TaskDbContext`, repositórios, configurações e carga da tabela de status).                     | Domain                      |
+| **Api**            | Recebe HTTP, delega ao serviço e devolve status codes adequados; tratamento global de erros; Swagger; composição da DI.                            | Application, Infrastructure |
 
 ---
 
@@ -378,7 +378,7 @@ tests/
 ### Regra de vencimento (SLA)
 
 - Uma tarefa está **vencida** quando `dueDate < hoje` **e** o status não é `Concluida`. Uma tarefa que vence hoje ainda está no prazo; sem `dueDate`, nunca está vencida.
-- A regra vive no domínio (`TaskItem.IsOverdue` e `TaskItem.OverdueAsOf`). A segunda é uma *expression* usada pelo repositório no filtro `?overdue=`, então a consulta é traduzível para SQL em um banco relacional. Um teste garante que as duas formas concordam.
+- A regra vive no domínio (`TaskItem.IsOverdue` e `TaskItem.OverdueAsOf`). A segunda é uma _expression_ usada pelo repositório no filtro `?overdue=`, então a consulta é traduzível para SQL em um banco relacional. Um teste garante que as duas formas concordam.
 - `isOverdue` é **calculado na leitura**, não armazenado: uma tarefa passa a ficar vencida pela simples passagem do tempo, sem precisar de job ou atualização.
 - "Hoje" usa o fuso horário local do servidor (`TimeProvider.GetLocalNow()`). **Trade-off:** em uma operação com unidades em fusos diferentes, o ideal seria associar a tarefa a um fuso (ex.: o do centro de distribuição) ou receber o prazo como data/hora com offset.
 
@@ -398,7 +398,7 @@ tests/
 
 ### Concorrência (não implementada, de propósito)
 
-Se duas pessoas editam a mesma tarefa ao mesmo tempo, a **última gravação vence**. Para o escopo do desafio, isso é aceitável e mantém a API simples. Se fosse necessário, a evolução seria o controle otimista: um campo de versão na tarefa, configurado como *concurrency token* no EF Core e exposto via `ETag` / `If-Match`, respondendo `412 Precondition Failed` quando a versão enviada estiver desatualizada.
+Se duas pessoas editam a mesma tarefa ao mesmo tempo, a **última gravação vence**. Para o escopo do desafio, isso é aceitável e mantém a API simples. Se fosse necessário, a evolução seria o controle otimista: um campo de versão na tarefa, configurado como _concurrency token_ no EF Core e exposto via `ETag` / `If-Match`, respondendo `412 Precondition Failed` quando a versão enviada estiver desatualizada.
 
 ### Idempotência (não implementada, de propósito)
 
@@ -432,12 +432,12 @@ Não há restrição de data de vencimento no passado: é comum registrar tarefa
 
 Centralizada em `GlobalExceptionHandler` (`IExceptionHandler`) + `AddProblemDetails()`, produzindo respostas **Problem Details (RFC 7807)** consistentes, com `type`, `title`, `status`, `detail`, `instance` e `traceId`:
 
-| Exceção | Status | Title |
-|---|---|---|
-| `ValidationException` (FluentValidation) | 400 | Validation Error (com `errors` por campo) |
-| `DomainException` | 400 | Business Rule Violation |
-| `TaskNotFoundException` | 404 | Resource Not Found |
-| qualquer outra | 500 | Internal Server Error (mensagem genérica, sem stack trace) |
+| Exceção                                  | Status | Title                                                      |
+| ---------------------------------------- | ------ | ---------------------------------------------------------- |
+| `ValidationException` (FluentValidation) | 400    | Validation Error (com `errors` por campo)                  |
+| `DomainException`                        | 400    | Business Rule Violation                                    |
+| `TaskNotFoundException`                  | 404    | Resource Not Found                                         |
+| qualquer outra                           | 500    | Internal Server Error (mensagem genérica, sem stack trace) |
 
 Os controllers não têm `try/catch`: o fluxo principal fica limpo e o mapeamento erro → HTTP fica em um único lugar. Rotas inexistentes também retornam Problem Details (`UseStatusCodePages`). Rotas com `{id:guid}` retornam 404 para IDs que não são GUID.
 
